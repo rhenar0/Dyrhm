@@ -9,6 +9,10 @@ pcap_t* handle; // Session handle
 int linkhdrlen; // Link layer type
 int packets;
 
+#define SIGTERM 15
+#define SIGINT 2
+#define SIGQUIT 3
+
 void get_link_header_len(pcap_t* handle) {
     int linktype;
 
@@ -141,6 +145,9 @@ int main(int argc, char *argv[]) {
                 return 0;
             case 'i':
                 strcpy(device, optarg);
+                break;
+            case 'n':
+                count = atoi(optarg);
                 break;
             default:
                 printf("Usage: %s [-i interface] [-n number of packets] [filter]\n", argv[0]);
