@@ -73,7 +73,6 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_c
             } else {
                 typeICMP = "Unknown";
             }
-            printf("Time : %s\n", ctime((const time_t*)&packethdr->ts.tv_sec));
             printf("Type:%d (%s) Code:%d ID:%d Seq:%d Chk:%d\n", icmphdr->icmp_type, typeICMP, icmphdr->icmp_code, ntohs(icmphdr->icmp_hun.ih_idseq.icd_id), ntohs(icmphdr->icmp_hun.ih_idseq.icd_seq), ntohs(icmphdr->icmp_cksum));
             printf("+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
             printf("Data : %s\n", icmphdr->icmp_dun.id_data);
