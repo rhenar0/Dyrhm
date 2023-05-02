@@ -74,7 +74,6 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_c
                 typeICMP = "Unknown";
             }
             printf("Type:%d (%s) Code:%d ID:%d Seq:%d Chk:%d\n", icmphdr->icmp_type, typeICMP, icmphdr->icmp_code, ntohs(icmphdr->icmp_hun.ih_idseq.icd_id), ntohs(icmphdr->icmp_hun.ih_idseq.icd_seq), ntohs(icmphdr->icmp_cksum));
-            printf("Data : %s\n", icmphdr->icmp_dun.id_data);
             printf("+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
             packets += 1;
             break;
@@ -146,16 +145,22 @@ int main(int argc, char *argv[]) {
     int count = 0;
     int opt;
 
+    FILE *fp;
+    char *nameFile;
+
     *device = 0;
     *filter = 0;
 
-    while ((opt = getopt(argc, argv, "hi:n:")) != -1) {
+    while ((opt = getopt(argc, argv, "hi:n:f:")) != -1) {
         switch (opt) {
             case 'h':
-                printf("Usage: %s [-i interface] [-n number of packets] [filter]\n", argv[0]);
+                printf("Usage: %s [-i interface] [-n number of packets] [-f output file] [filter]\n", argv[0]);
                 return 0;
             case 'i':
                 strcpy(device, optarg);
+                break;
+            case 'f':
+                nameFile = optarg;
                 break;
             case 'n':
                 count = atoi(optarg);
@@ -175,6 +180,15 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, stop_capture);
     signal(SIGQUIT, stop_capture);
 
+    if (strlen(nameFile) == 0) {
+        nameFile = "default_output.txt";
+    }
+
+    if((fp=freopen(nameFile, "w" ,stdout))==NULL) {
+        printf("Cannot open file.\n");
+        exit(1);
+    }
+
     handle = create_pcap_handle(device, filter);
     if (handle == NULL) {
         return -1;
@@ -191,5 +205,6 @@ int main(int argc, char *argv[]) {
     }
 
     stop_capture(0);
+    fclose(fp);
     return 0;
 }
