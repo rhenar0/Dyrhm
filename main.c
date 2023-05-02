@@ -12,6 +12,8 @@ int packets;
 #define SIGTERM 15
 #define SIGINT 2
 #define SIGQUIT 3
+#define ICMP_ECHOREPLY 0
+#define ICMP_ECHO 8
 
 void get_link_header_len(pcap_t* handle) {
     int linktype;
@@ -48,6 +50,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_c
     char iphdrInfo[256];
     char srcip[256];
     char dstip[256];
+    char *typeICMP;
 
     // Get IP header
     packetptr += linkhdrlen;
@@ -63,8 +66,19 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_c
             icmphdr = (struct icmp*)packetptr;
             printf("ICMP %s -> %s\n", srcip, dstip);
             printf("%s\n", iphdrInfo);
-            printf("Type:%d Code:%d ID:%d Seq:%d\n", icmphdr->icmp_type, icmphdr->icmp_code, ntohs(icmphdr->icmp_hun.ih_idseq.icd_id), ntohs(icmphdr->icmp_hun.ih_idseq.icd_seq));
-            printf("+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+\n");
+            if(icmphdr->icmp_type == ICMP_ECHOREPLY) {
+                typeICMP = "Echo Reply";
+            } else if (icmphdr->icmp_type == ICMP_ECHO) {
+                typeICMP = "Echo Request";
+            } else {
+                typeICMP = "Unknown";
+            }
+            printf("Time : %s\n", ctime((const time_t*)&packethdr->ts.tv_sec));
+            printf("Type:%d (%s) Code:%d ID:%d Seq:%d Chk:%d\n", icmphdr->icmp_type, typeICMP, icmphdr->icmp_code, ntohs(icmphdr->icmp_hun.ih_idseq.icd_id), ntohs(icmphdr->icmp_hun.ih_idseq.icd_seq), ntohs(icmphdr->icmp_cksum));
+            printf("+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
+            printf("Data : %s\n", icmphdr->icmp_dun.id_data);
+            printf("+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
+            printf("-----------------------------------------------------------------------------\n");
             packets += 1;
             break;
     }
