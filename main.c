@@ -151,6 +151,9 @@ int main(int argc, char *argv[]) {
     *device = 0;
     *filter = 0;
 
+    printf("ICMP Sniffer\n");
+    printf("============\n");
+
     while ((opt = getopt(argc, argv, "hi:n:f:")) != -1) {
         switch (opt) {
             case 'h':
@@ -171,6 +174,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    printf("Sniffing on device %s\n", device);
+
     for (int i = optind; i < argc; i++) {
         strcat(filter, argv[i]);
         strcat(filter, " ");
@@ -180,9 +185,11 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, stop_capture);
     signal(SIGQUIT, stop_capture);
 
-    if (strlen(nameFile) == 0) {
+    if (nameFile == NULL) {
         nameFile = "default_output.txt";
     }
+
+    printf("The job will be outputed in %s\n", nameFile);
 
     if((fp=freopen(nameFile, "w" ,stdout))==NULL) {
         printf("Cannot open file.\n");
@@ -206,5 +213,6 @@ int main(int argc, char *argv[]) {
 
     stop_capture(0);
     fclose(fp);
+    printf("The job is done.\n");
     return 0;
 }
