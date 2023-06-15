@@ -6,6 +6,7 @@
 #include <netinet/ip_icmp.h>
 
 pcap_t* handle; // Session handle
+pcap_dumper_t* pcap_dumper; // Pcap buffer
 int linkhdrlen; // Link layer type
 int packets;
 
@@ -44,6 +45,47 @@ void get_link_header_len(pcap_t* handle) {
 
 }
 
+pcap_t* create_pcap_handle(char* device, char* filter) {
+    char errbuf[PCAP_ERRBUF_SIZE];
+    pcap_t* handle = NULL;
+    struct bpf_program bpf;
+    bpf_u_int32 netmask;
+    bpf_u_int32 srcip;
+
+    // Open pcap file for writing
+    handle = pcap_open_dead(DLT_EN10MB, BUFSIZ);
+    if (handle == NULL) {
+        fprintf(stderr, "pcap_open_dead() failed\n");
+        return NULL;
+    }
+
+    // Create the pcap file dumper
+    pcap_dumper = pcap_dump_open(handle, "output.pcap");
+    if (pcap_dumper == NULL) {
+        fprintf(stderr, "pcap_dump_open() failed\n");
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Conversion packet filter
+    if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
+        pcap_dump_close(pcap_dumper);
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Set the packet filter
+    if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
+        pcap_dump_close(pcap_dumper);
+        pcap_close(handle);
+        return NULL;
+    }
+
+    return handle;
+}
+
 void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_char *packetptr) {
     struct ip* iphdr;
     struct icmp* icmphdr;
@@ -78,6 +120,9 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_c
             packets += 1;
             break;
     }
+
+    // Write the packet to the pcap file
+    pcap_dump((u_char*)pcap_dumper, packethdr, packetptr);
 }
 
 void stop_capture(int signo) {
@@ -90,53 +135,51 @@ void stop_capture(int signo) {
         printf("%d packets dropped\n", stats.ps_drop);
     }
     pcap_close(pd);
+    pcap_dump_close(pcap_dumper);
     exit(0);
 }
 
 pcap_t* create_pcap_handle(char* device, char* filter) {
     char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t  *handle = NULL;
-    pcap_if_t* devices = NULL;
+    pcap_t* handle = NULL;
     struct bpf_program bpf;
     bpf_u_int32 netmask;
     bpf_u_int32 srcip;
 
-    // Si aucun device n'est spécifié, on prend le premier de la liste
-    if (!*device) {
-        if (pcap_findalldevs(&devices, errbuf) < 0) {
-            fprintf(stderr, "pcap_findalldevs() failed: %s\n", errbuf);
-            return NULL;
-        }
-        strcpy(device, devices[0].name);
-    }
-
-    // Obtenir le device src IP et netmask
-    if (pcap_lookupnet(device, &srcip, &netmask, errbuf) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_lookupnet() failed: %s\n", errbuf);
+    // Open pcap file for writing
+    handle = pcap_open_dead(DLT_EN10MB, BUFSIZ);
+    if (handle == NULL) {
+        fprintf(stderr, "pcap_open_dead() failed\n");
         return NULL;
     }
 
-    // Open device live capture
-    handle = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
-    if (handle == NULL) {
-        fprintf(stderr, "pcap_open_live(): %s\n", errbuf);
+    // Create the pcap file dumper
+    pcap_dumper = pcap_dump_open(handle, "output.pcap");
+    if (pcap_dumper == NULL) {
+        fprintf(stderr, "pcap_dump_open() failed\n");
+        pcap_close(handle);
         return NULL;
     }
 
     // Conversion packet filter
     if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
         fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
+        pcap_dump_close(pcap_dumper);
+        pcap_close(handle);
         return NULL;
     }
 
-    // Appliquer le filtre
+    // Set the packet filter
     if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
         fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
+        pcap_dump_close(pcap_dumper);
+        pcap_close(handle);
         return NULL;
     }
 
     return handle;
 }
+
 
 int main(int argc, char *argv[]) {
 
@@ -144,9 +187,6 @@ int main(int argc, char *argv[]) {
     char filter[256];
     int count = 0;
     int opt;
-
-    FILE *fp;
-    char *nameFile;
 
     *device = 0;
     *filter = 0;
@@ -157,13 +197,10 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "hi:n:f:")) != -1) {
         switch (opt) {
             case 'h':
-                printf("Usage: %s [-i interface] [-n number of packets] [-f output file] [filter]\n", argv[0]);
+                printf("Usage: %s [-i interface] [-n number of packets] [filter]\n", argv[0]);
                 return 0;
             case 'i':
                 strcpy(device, optarg);
-                break;
-            case 'f':
-                nameFile = optarg;
                 break;
             case 'n':
                 count = atoi(optarg);
@@ -185,16 +222,7 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, stop_capture);
     signal(SIGQUIT, stop_capture);
 
-    if (nameFile == NULL) {
-        nameFile = "default_output.txt";
-    }
-
-    printf("The job will be outputed in %s\n", nameFile);
-
-    if((fp=freopen(nameFile, "w" ,stdout))==NULL) {
-        printf("Cannot open file.\n");
-        exit(1);
-    }
+    printf("The job will be outputed in output.pcap\n");
 
     handle = create_pcap_handle(device, filter);
     if (handle == NULL) {
@@ -212,7 +240,6 @@ int main(int argc, char *argv[]) {
     }
 
     stop_capture(0);
-    fclose(fp);
     printf("The job is done.\n");
     return 0;
 }
