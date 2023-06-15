@@ -52,33 +52,58 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
     bpf_u_int32 netmask;
     bpf_u_int32 srcip;
 
-    // Open pcap file for writing
-    handle = pcap_open_dead(DLT_EN10MB, BUFSIZ);
+    // Create pcap handle
+    handle = pcap_create(device, errbuf);
     if (handle == NULL) {
-        fprintf(stderr, "pcap_open_dead() failed\n");
+        fprintf(stderr, "pcap_create() failed: %s\n", errbuf);
         return NULL;
     }
 
-    // Create the pcap file dumper
-    pcap_dumper = pcap_dump_open(handle, "output.pcap");
-    if (pcap_dumper == NULL) {
-        fprintf(stderr, "pcap_dump_open() failed\n");
+    // Activate pcap handle
+    if (pcap_activate(handle) != 0) {
+        fprintf(stderr, "pcap_activate() failed: %s\n", pcap_geterr(handle));
         pcap_close(handle);
         return NULL;
     }
 
-    // Conversion packet filter
+    // Set snapshot length
+    if (pcap_set_snaplen(handle, BUFSIZ) != 0) {
+        fprintf(stderr, "pcap_set_snaplen() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Set promiscuous mode
+    if (pcap_set_promisc(handle, 1) != 0) {
+        fprintf(stderr, "pcap_set_promisc() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Set timeout
+    if (pcap_set_timeout(handle, 1000) != 0) {
+        fprintf(stderr, "pcap_set_timeout() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Get device source IP and netmask
+    if (pcap_lookupnet(device, &srcip, &netmask, errbuf) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_lookupnet() failed: %s\n", errbuf);
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Compile the packet filter
     if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
-        pcap_dump_close(pcap_dumper);
+        fprintf(stderr, "pcap_compile() failed: %s\n", pcap_geterr(handle));
         pcap_close(handle);
         return NULL;
     }
 
     // Set the packet filter
     if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
-        pcap_dump_close(pcap_dumper);
+        fprintf(stderr, "pcap_setfilter() failed: %s\n", pcap_geterr(handle));
         pcap_close(handle);
         return NULL;
     }
