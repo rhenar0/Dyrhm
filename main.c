@@ -59,13 +59,6 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
         return NULL;
     }
 
-    // Activate pcap handle
-    if (pcap_activate(handle) != 0) {
-        fprintf(stderr, "pcap_activate() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
     // Set snapshot length
     if (pcap_set_snaplen(handle, BUFSIZ) != 0) {
         fprintf(stderr, "pcap_set_snaplen() failed: %s\n", pcap_geterr(handle));
@@ -83,6 +76,13 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
     // Set timeout
     if (pcap_set_timeout(handle, 1000) != 0) {
         fprintf(stderr, "pcap_set_timeout() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Activate pcap handle
+    if (pcap_activate(handle) != 0) {
+        fprintf(stderr, "pcap_activate() failed: %s\n", pcap_geterr(handle));
         pcap_close(handle);
         return NULL;
     }
@@ -110,6 +110,7 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
 
     return handle;
 }
+
 
 void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_char *packetptr) {
     struct ip* iphdr;
