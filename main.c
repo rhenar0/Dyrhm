@@ -139,48 +139,6 @@ void stop_capture(int signo) {
     exit(0);
 }
 
-pcap_t* create_pcap_handle(char* device, char* filter) {
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t* handle = NULL;
-    struct bpf_program bpf;
-    bpf_u_int32 netmask;
-    bpf_u_int32 srcip;
-
-    // Open pcap file for writing
-    handle = pcap_open_dead(DLT_EN10MB, BUFSIZ);
-    if (handle == NULL) {
-        fprintf(stderr, "pcap_open_dead() failed\n");
-        return NULL;
-    }
-
-    // Create the pcap file dumper
-    pcap_dumper = pcap_dump_open(handle, "output.pcap");
-    if (pcap_dumper == NULL) {
-        fprintf(stderr, "pcap_dump_open() failed\n");
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Conversion packet filter
-    if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
-        pcap_dump_close(pcap_dumper);
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Set the packet filter
-    if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
-        pcap_dump_close(pcap_dumper);
-        pcap_close(handle);
-        return NULL;
-    }
-
-    return handle;
-}
-
-
 int main(int argc, char *argv[]) {
 
     char device[256];
