@@ -122,28 +122,66 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
         return NULL;
     }
 
-    // Open device live capture in promiscuous mode
-    handle = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
-    if (handle == NULL) {
+    // Open device in promiscuous mode to get the MAC address
+    pcap_t* promisc_handle = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
+    if (promisc_handle == NULL) {
         fprintf(stderr, "pcap_open_live(): %s\n", errbuf);
         return NULL;
     }
 
-    // Enable promiscuous mode
+    // Get the MAC address
+    struct pcap_addr* addresses;
+    if (pcap_findalldevs_addresses(promisc_handle, &addresses, errbuf) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_findalldevs_addresses() failed: %s\n", errbuf);
+        pcap_close(promisc_handle);
+        return NULL;
+    }
+    struct pcap_addr* address = addresses;
+    if (address && address->addr && address->addr->sa_family == AF_LINK) {
+        struct sockaddr_dl* sdl = (struct sockaddr_dl*)address->addr;
+        memcpy(mac_address, LLADDR(sdl), sdl->sdl_alen);
+    }
+    pcap_freealldevs_addresses(addresses);
+    pcap_close(promisc_handle);
+
+    // Open device capture handle
+    handle = pcap_create(device, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "pcap_create() failed: %s\n", errbuf);
+        return NULL;
+    }
+
+    // Set promiscuous mode
     if (pcap_set_promisc(handle, 1) != 0) {
         fprintf(stderr, "pcap_set_promisc() failed: %s\n", pcap_geterr(handle));
         pcap_close(handle);
         return NULL;
     }
 
-    // Conversion packet filter
+    // Set MAC address filter
+    if (pcap_set_rfmon(handle, 0) != 0) {
+        fprintf(stderr, "pcap_set_rfmon() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+    if (pcap_set_snaplen(handle, 65535) != 0) {
+        fprintf(stderr, "pcap_set_snaplen() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+    if (pcap_activate(handle) != 0) {
+        fprintf(stderr, "pcap_activate() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+
+    // Compile and set the packet filter
     if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
         fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
         pcap_close(handle);
         return NULL;
     }
 
-    // Apply the filter
     if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
         fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
         pcap_close(handle);
@@ -152,6 +190,7 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
 
     return handle;
 }
+
 
 
 int main(int argc, char* argv[]) {
