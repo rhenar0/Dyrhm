@@ -6,7 +6,6 @@
 #include <netinet/ip_icmp.h>
 
 pcap_t* handle; // Session handle
-pcap_dumper_t* pcap_dumper; // Pcap buffer
 int linkhdrlen; // Link layer type
 int packets;
 
@@ -24,8 +23,7 @@ void get_link_header_len(pcap_t* handle) {
         return;
     }
 
-    switch (linktype)
-    {
+    switch (linktype) {
         case DLT_NULL:
             linkhdrlen = 4;
             break;
@@ -42,112 +40,49 @@ void get_link_header_len(pcap_t* handle) {
             printf("Unsupported link type %d\n", linktype);
             linkhdrlen = 0;
     }
-
 }
 
-pcap_t* create_pcap_handle(char* device, char* filter) {
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t* handle = NULL;
-    struct bpf_program bpf;
-    bpf_u_int32 netmask;
-    bpf_u_int32 srcip;
-
-    // Create pcap handle
-    handle = pcap_create(device, errbuf);
-    if (handle == NULL) {
-        fprintf(stderr, "pcap_create() failed: %s\n", errbuf);
-        return NULL;
-    }
-
-    // Set snapshot length
-    if (pcap_set_snaplen(handle, BUFSIZ) != 0) {
-        fprintf(stderr, "pcap_set_snaplen() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Set promiscuous mode
-    if (pcap_set_promisc(handle, 1) != 0) {
-        fprintf(stderr, "pcap_set_promisc() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Set timeout
-    if (pcap_set_timeout(handle, 1000) != 0) {
-        fprintf(stderr, "pcap_set_timeout() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Activate pcap handle
-    if (pcap_activate(handle) != 0) {
-        fprintf(stderr, "pcap_activate() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Get device source IP and netmask
-    if (pcap_lookupnet(device, &srcip, &netmask, errbuf) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_lookupnet() failed: %s\n", errbuf);
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Compile the packet filter
-    if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_compile() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
-    // Set the packet filter
-    if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
-        fprintf(stderr, "pcap_setfilter() failed: %s\n", pcap_geterr(handle));
-        pcap_close(handle);
-        return NULL;
-    }
-
-    return handle;
-}
-
-
-void packet_handler(u_char *user, const struct pcap_pkthdr *packethdr, const u_char *packetptr) {
+void packet_handler(u_char* user, const struct pcap_pkthdr* packethdr, const u_char* packetptr) {
     struct ip* iphdr;
     struct icmp* icmphdr;
     char iphdrInfo[256];
     char srcip[256];
     char dstip[256];
-    char *typeICMP;
+    char* typeICMP;
 
     // Get IP header
     packetptr += linkhdrlen;
     iphdr = (struct ip*)packetptr;
-    strcpy(srcip, inet_ntoa(iphdr -> ip_src));
+    strcpy(srcip, inet_ntoa(iphdr->ip_src));
     strcpy(dstip, inet_ntoa(iphdr->ip_dst));
-    sprintf(iphdrInfo, "ID:%d TOS:0x%x TTL:%d", ntohs(iphdr->ip_id), iphdr->ip_tos, iphdr->ip_ttl, 4*iphdr->ip_hl, ntohs(iphdr->ip_len));
+    sprintf(iphdrInfo, "ID:%d TOS:0x%x TTL:%d", ntohs(iphdr->ip_id), iphdr->ip_tos, iphdr->ip_ttl, 4 * iphdr->ip_hl, ntohs(iphdr->ip_len));
 
-    //Transport layer ICMP
-    packetptr += 4*iphdr->ip_hl;
+    // Transport layer ICMP
+    packetptr += 4 * iphdr->ip_hl;
     switch (iphdr->ip_p) {
         case IPPROTO_ICMP:
             icmphdr = (struct icmp*)packetptr;
             printf("ICMP %s -> %s\n", srcip, dstip);
             printf("%s\n", iphdrInfo);
-            if(icmphdr->icmp_type == ICMP_ECHOREPLY) {
+            if (icmphdr->icmp_type == ICMP_ECHOREPLY) {
                 typeICMP = "Echo Reply";
             } else if (icmphdr->icmp_type == ICMP_ECHO) {
                 typeICMP = "Echo Request";
             } else {
                 typeICMP = "Unknown";
             }
-            printf("Type:%d (%s) Code:%d ID:%d Seq:%d Chk:%d\n", icmphdr->icmp_type, typeICMP, icmphdr->icmp_code, ntohs(icmphdr->icmp_hun.ih_idseq.icd_id), ntohs(icmphdr->icmp_hun.ih_idseq.icd_seq), ntohs(icmphdr->icmp_cksum));
+            printf("Type:%d (%s) Code:%d ID:%d Seq:%d Chk:%d\n", icmphdr->icmp_type, typeICMP,
+                   icmphdr->icmp_code, ntohs(icmphdr->icmp_hun.ih_idseq.icd_id),
+                   ntohs(icmphdr->icmp_hun.ih_idseq.icd_seq), ntohs(icmphdr->icmp_cksum));
             printf("+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+\n");
             packets += 1;
             break;
     }
 
-    // Write the packet to the pcap file
+    // Retrieve the pcap_dumper_t handle from user data
+    pcap_dumper_t* pcap_dumper = (pcap_dumper_t*)user;
+
+    // Dump the packet to the pcap file
     pcap_dump((u_char*)pcap_dumper, packethdr, packetptr);
 }
 
@@ -161,16 +96,63 @@ void stop_capture(int signo) {
         printf("%d packets dropped\n", stats.ps_drop);
     }
     pcap_close(pd);
-    pcap_dump_close(pcap_dumper);
     exit(0);
 }
 
-int main(int argc, char *argv[]) {
+pcap_t* create_pcap_handle(char* device, char* filter) {
+    char errbuf[PCAP_ERRBUF_SIZE];
+    pcap_t* handle = NULL;
+    pcap_if_t* devices = NULL;
+    struct bpf_program bpf;
+    bpf_u_int32 netmask;
+    bpf_u_int32 srcip;
+
+    // If no device is specified, take the first one from the list
+    if (!*device) {
+        if (pcap_findalldevs(&devices, errbuf) < 0) {
+            fprintf(stderr, "pcap_findalldevs() failed: %s\n", errbuf);
+            return NULL;
+        }
+        strcpy(device, devices[0].name);
+    }
+
+    // Obtain the device source IP and netmask
+    if (pcap_lookupnet(device, &srcip, &netmask, errbuf) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_lookupnet() failed: %s\n", errbuf);
+        return NULL;
+    }
+
+    // Open device live capture
+    handle = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "pcap_open_live(): %s\n", errbuf);
+        return NULL;
+    }
+
+    // Conversion packet filter
+    if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
+        return NULL;
+    }
+
+    // Apply the filter
+    if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
+        fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
+        return NULL;
+    }
+
+    return handle;
+}
+
+int main(int argc, char* argv[]) {
 
     char device[256];
     char filter[256];
     int count = 0;
     int opt;
+
+    pcap_dumper_t* pcap_dumper = NULL;  // pcap_dumper_t handle for pcap file
+    char* nameFile;
 
     *device = 0;
     *filter = 0;
@@ -181,49 +163,63 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "hi:n:f:")) != -1) {
         switch (opt) {
             case 'h':
-                printf("Usage: %s [-i interface] [-n number of packets] [filter]\n", argv[0]);
+                printf("Usage: %s [-i interface] [-n number of packets] [-f output file] [filter]\n", argv[0]);
                 return 0;
             case 'i':
                 strcpy(device, optarg);
+                break;
+            case 'f':
+                nameFile = optarg;
                 break;
             case 'n':
                 count = atoi(optarg);
                 break;
             default:
-                printf("Usage: %s [-i interface] [-n number of packets] [filter]\n", argv[0]);
-                return 0;
+                fprintf(stderr, "Unknown option: %c\n", optopt);
+                return 1;
         }
     }
 
-    printf("Sniffing on device %s\n", device);
-
-    for (int i = optind; i < argc; i++) {
-        strcat(filter, argv[i]);
-        strcat(filter, " ");
+    // Get the packet filter expression (if any)
+    if (optind < argc) {
+        strncpy(filter, argv[optind], sizeof(filter) - 1);
     }
 
-    signal(SIGINT, stop_capture);
-    signal(SIGTERM, stop_capture);
-    signal(SIGQUIT, stop_capture);
-
-    printf("The job will be outputed in output.pcap\n");
-
+    // Create the pcap handle
     handle = create_pcap_handle(device, filter);
     if (handle == NULL) {
-        return -1;
+        return 1;
     }
 
+    // Create the pcap_dumper_t handle for writing packets to a pcap file
+    pcap_dumper = pcap_dump_open(handle, nameFile);
+    if (pcap_dumper == NULL) {
+        fprintf(stderr, "pcap_dump_open() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return 1;
+    }
+
+    // Get the link layer header length
     get_link_header_len(handle);
-    if (linkhdrlen == 0) {
-        return -1;
-    }
 
-    if (pcap_loop(handle, count, packet_handler, (u_char*)NULL) < 0){
+    // Register the signal handler to stop the capture
+    signal(SIGINT, stop_capture);
+    signal(SIGQUIT, stop_capture);
+    signal(SIGTERM, stop_capture);
+
+    // Start capturing packets
+    if (pcap_loop(handle, count, packet_handler, (u_char*)pcap_dumper) < 0) {
         fprintf(stderr, "pcap_loop() failed: %s\n", pcap_geterr(handle));
-        return -1;
+        pcap_dump_close(pcap_dumper);
+        pcap_close(handle);
+        return 1;
     }
 
-    stop_capture(0);
-    printf("The job is done.\n");
+    // Close the pcap_dumper_t handle
+    pcap_dump_close(pcap_dumper);
+
+    // Close the pcap handle
+    pcap_close(handle);
+
     return 0;
 }
