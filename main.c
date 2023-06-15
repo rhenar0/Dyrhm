@@ -122,27 +122,37 @@ pcap_t* create_pcap_handle(char* device, char* filter) {
         return NULL;
     }
 
-    // Open device live capture
+    // Open device live capture in promiscuous mode
     handle = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
     if (handle == NULL) {
         fprintf(stderr, "pcap_open_live(): %s\n", errbuf);
         return NULL;
     }
 
+    // Enable promiscuous mode
+    if (pcap_set_promisc(handle, 1) != 0) {
+        fprintf(stderr, "pcap_set_promisc() failed: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+
     // Conversion packet filter
     if (pcap_compile(handle, &bpf, filter, 0, netmask) == PCAP_ERROR) {
         fprintf(stderr, "pcap_compile(): %s\n", pcap_geterr(handle));
+        pcap_close(handle);
         return NULL;
     }
 
     // Apply the filter
     if (pcap_setfilter(handle, &bpf) == PCAP_ERROR) {
         fprintf(stderr, "pcap_setfilter(): %s\n", pcap_geterr(handle));
+        pcap_close(handle);
         return NULL;
     }
 
     return handle;
 }
+
 
 int main(int argc, char* argv[]) {
 
